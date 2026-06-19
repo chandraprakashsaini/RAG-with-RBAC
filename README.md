@@ -1,14 +1,16 @@
 # RAG RBAC API
 
-A FastAPI-based Retrieval-Augmented Generation (RAG) system with role-based access control, document chunking strategies, vector search via ChromaDB, and chat completions.
+A FastAPI-based Retrieval-Augmented Generation (RAG) system with role-based access control, document chunking strategies, vector search via ChromaDB, Gemini-powered chat with SSE streaming, and an admin dashboard frontend.
 
 ## Features
 
 - **🔐 RBAC Authentication** — JWT-based auth with role-based access control (admin, analyst, manager, executive, viewer)
 - **📄 Document Chunking** — Multiple strategies: fixed, recursive, sentence, and token-approximate
 - **🔍 Vector Search** — ChromaDB persistent storage with cosine similarity search
-- **💬 Chat Completions** — LLM-powered chat with message history
+- **💬 Chat with SSE Streaming** — LLM-powered chat with real-time token streaming via Server-Sent Events
+- **🧠 RAG Pipeline** — Retrieve relevant chunks → build context with chat history → Gemini LLM
 - **📋 Document Management** — CRUD operations for documents with chunk preview
+- **🖥️ Admin Dashboard** — Built-in SPA frontend with chat, document management, vector search, and admin panel
 - **⚡ Async First** — Native async SQLAlchemy + async ChromaDB operations
 - **🛡️ Structured Error Handling** — Global exception handlers with JSON logging
 
@@ -16,61 +18,71 @@ A FastAPI-based Retrieval-Augmented Generation (RAG) system with role-based acce
 
 ```
 app/
-├── core/           # App config, security, auth, exceptions
-│   ├── config.py
-│   ├── security.py
-│   ├── auth.py
-│   └── exceptions.py
-├── db/             # Database models, connections
-│   ├── models.py
-│   ├── connection.py
-│   └── chroma.py
-├── models/         # Pydantic request/response schemas
-│   ├── chunking.py
-│   ├── chat.py
-│   └── vector.py
-├── routes/         # API endpoint routers
-│   ├── auth.py
-│   ├── chat.py
-│   ├── chunking.py
-│   ├── documents.py
-│   └── health.py
-├── services/       # Business logic layer
+├── core/               # App config, security, auth, exceptions
+│   ├── application.py  # FastAPI app factory (CORS, lifespan, static mount)
+│   ├── config.py       # Pydantic settings (env vars)
+│   ├── security.py     # JWT create/decode, password hashing
+│   ├── auth.py         # get_current_user, require_role dependencies
+│   └── exceptions.py   # Global exception handlers
+├── db/                 # Database models, connections
+│   ├── models.py       # SQLAlchemy ORM (User, Role, Chat, ChatMessage)
+│   ├── connection.py   # Async SQLAlchemy engine + session factory
+│   └── chroma.py       # ChromaDB client singleton (Python 3.8 compat)
+├── llms/               # LLM provider
+│   └── provider.py     # LangChain GoogleGenerativeAI (optional dep)
+├── models/             # Pydantic request/response schemas
+├── routes/             # API endpoint routers
+│   ├── auth.py         # Login, register, roles, /me
+│   ├── chat.py         # Chat CRUD + messages + SSE stream
+│   ├── chunking.py     # Preview, ingest, search
+│   ├── documents.py    # Document CRUD + chunk listing
+│   └── health.py       # Health check
+├── services/           # Business logic layer
+│   ├── rag_service.py  # RAG pipeline: retrieval → context → LLM
+│   ├── chat_service.py # Chat CRUD + send_message (sync + stream)
 │   ├── chunking_service.py
-│   ├── chat_service.py
 │   └── vector_store_service.py
-├── llms/           # LLM provider abstraction
-│   └── provider.py
-└── utils/          # Low-level utilities
-    └── chunking.py
+└── utils/              # Low-level utilities
+    └── chunking.py     # Chunk text implementations
+
+frontend/               # SPA admin dashboard
+├── index.html          # App shell
+├── css/style.css       # Dark theme, responsive layout
+└── js/
+    ├── app.js          # Hash router, auth guard, sidebar layout
+    ├── api.js          # API client (fetch + XHR SSE streaming)
+    └── pages/
+        ├── login.js    # Login / Register
+        ├── admin.js    # Role management
+        ├── documents.js# Upload, search, view/delete chunks
+        ├── chat.js     # Chat UI with SSE streaming
+        └── search.js   # Vector search + ingest
 ```
 
 ## Quick Start
 
 ### Prerequisites
 
-- Python 3.12+
+- Python 3.12+ (runs on 3.8 with some limitations)
 - pip or uv
 
 ### Installation
 
 ```bash
-# Clone the repository
 git clone <repo-url> && cd project-1
 
-# Create a virtual environment
 python -m venv .venv && source .venv/bin/activate
 
-# Install dependencies
+# Core dependencies
 pip install -e .
 
-# Install dev dependencies (for testing)
+# Dev dependencies (for testing)
 pip install -e ".[dev]"
 ```
 
 ### Configuration
 
-Create a `.env` file in the project root (all values are optional with sensible defaults):
+Create a `.env` file in the project root (all values optional with sensible defaults):
 
 ```env
 DEBUG=false
@@ -81,31 +93,24 @@ EMBEDDING_MODEL=all-MiniLM-L6-v2
 JWT_SECRET=change-me-in-production
 JWT_ALGORITHM=HS256
 JWT_EXPIRE_MINUTES=60
+GEMINI_API_KEY=your-google-ai-key
+GEMINI_MODEL=gemini-2.0-flash
+RAG_TOP_K=5
 LOG_LEVEL=INFO
 LOG_FORMAT=json
 ```
 
-### Database Setup
+### Database
 
-```bash
-# Apply all pending migrations
-alembic upgrade head
+Tables are auto-created on first startup. Seed users are inserted automatically:
 
-# Seed the database with default roles and users
-# (Migrations include admin, analyst, manager, executive, viewer roles)
-```
-
-Default seeded users:
-
-| Name   | Email                     | Role     | Password Hash         |
-|--------|---------------------------|----------|-----------------------|
-| Alice  | alice.admin@example.com   | admin    | dummy_hash_admin_123  |
-| Bob    | bob.analyst@example.com   | analyst  | dummy_hash_analyst_123|
-| Carol  | carol.manager@example.com | manager  | dummy_hash_manager_123|
-| Dave   | dave.executive@example.com| executive| dummy_hash_executive_123|
-| Eve    | eve.viewer@example.com    | viewer   | dummy_hash_viewer_123 |
-
-> **Note:** These hashes are placeholder values. In production, use properly bcrypt-hashed passwords via the `/auth/register` endpoint.
+| Email               | Password     | Role     |
+|---------------------|-------------|----------|
+| alice@example.com   | password123 | admin    |
+| bob@example.com     | password123 | analyst  |
+| carol@example.com   | password123 | manager  |
+| dave@example.com    | password123 | executive|
+| eve@example.com     | password123 | viewer   |
 
 ### Run
 
@@ -113,7 +118,8 @@ Default seeded users:
 uvicorn main:app --reload
 ```
 
-API is available at `http://localhost:8000`. Interactive docs at `http://localhost:8000/docs`.
+Open `http://localhost:8000` for the admin dashboard.
+API docs at `http://localhost:8000/docs`.
 
 ## API Reference
 
@@ -123,66 +129,34 @@ All endpoints except `/health` and `/auth/login` require a Bearer JWT token.
 
 #### POST /auth/login
 
-Authenticate and receive a JWT token.
-
-```json
+```
 {
-  "email": "alice.admin@example.com",
-  "password": "dummy_hash_admin_123"
+  "email": "alice@example.com",
+  "password": "password123"
 }
 ```
 
-Response:
-
-```json
-{
-  "access_token": "eyJhbGciOiJIUzI1NiIs...",
-  "token_type": "bearer",
-  "user": {
-    "id": "aaaaaaaa-1111-1111-1111-111111111111",
-    "email": "alice.admin@example.com",
-    "full_name": "Alice Admin",
-    "role_id": "11111111-1111-1111-1111-111111111111",
-    "is_active": true,
-    "created_at": "2026-05-27T20:05:00+00:00",
-    "updated_at": "2026-05-27T20:05:00+00:00"
-  }
-}
-```
+Response: `{ "access_token": "...", "user": {...} }`
 
 #### POST /auth/register (admin only)
 
-```json
+```
 {
   "email": "newuser@example.com",
   "full_name": "New User",
   "password": "secure_password",
-  "role_id": "22222222-2222-2222-2222-222222222222"
+  "role_id": "22222222-2222-..."
 }
 ```
 
-#### GET /auth/me
+#### GET /auth/me — Returns the authenticated user's profile
 
-Returns the authenticated user's profile.
-
-#### POST /auth/roles (admin only)
-
-```json
-{
-  "name": "custom_role",
-  "description": "Custom role description"
-}
-```
-
-#### GET /auth/roles (admin only)
-
-Lists all available roles.
+#### POST /auth/roles (admin only) — Create a new role
+#### GET /auth/roles (admin only) — List all roles
 
 ### Document Chunking
 
-#### POST /api/v1/chunk-preview
-
-Preview how a text will be chunked without storing it.
+#### POST /api/v1/chunk-preview — Preview chunking without storing
 
 ```json
 {
@@ -190,163 +164,129 @@ Preview how a text will be chunked without storing it.
   "chunking": {
     "strategy": "recursive",
     "chunk_size": 600,
-    "chunk_overlap": 100,
-    "separators": ["\n\n", "\n", ". ", " "],
-    "max_sentences_per_chunk": 5,
-    "estimated_chars_per_token": 4
+    "chunk_overlap": 100
   }
 }
 ```
 
-#### POST /api/v1/ingest (admin, analyst, manager)
+#### POST /api/v1/ingest (admin, analyst, manager) — Chunk and store in vector DB
 
-Chunk and store a document in the vector database.
-
-```json
-{
-  "document_id": "aaaaaaaa-1111-1111-1111-111111111111",
-  "text": "Document content...",
-  "chunking": {
-    "strategy": "sentence",
-    "chunk_size": 700,
-    "chunk_overlap": 80,
-    "max_sentences_per_chunk": 4
-  }
-}
-```
-
-### Vector Search
-
-#### POST /api/v1/search
-
-Search for chunks semantically similar to a query.
+#### POST /api/v1/search — Semantic search across chunks
 
 ```json
 {
   "query": "What does the document say about retention policy?",
   "top_k": 5,
-  "document_id": "aaaaaaaa-1111-1111-1111-111111111111"
+  "document_id": "aaaaaaaa-..."
 }
 ```
 
 ### Document Management
 
-#### POST /api/v1/documents (admin, analyst, manager)
-
-Create a document with chunking.
-
-```json
-{
-  "text": "Document content to chunk and store...",
-  "chunking": {
-    "strategy": "recursive",
-    "chunk_size": 800,
-    "chunk_overlap": 120
-  }
-}
-```
-
-#### DELETE /api/v1/documents/{document_id} (admin, manager)
-
-Delete a document and all its chunks.
-
-#### GET /api/v1/documents/{document_id}/chunks
-
-Get paginated chunks for a document.
-
-| Parameter | Type | Default | Description |
-|-----------|------|---------|-------------|
-| limit     | int  | 10      | Chunks per page |
-| offset    | int  | 0       | Pagination offset |
+#### POST /api/v1/documents (admin, analyst, manager) — Upload document with chunking
+#### DELETE /api/v1/documents/{id} (admin, manager) — Delete document and chunks
+#### GET /api/v1/documents/{id}/chunks — Get paginated chunks (`?limit=10&offset=0`)
 
 ### Chat
 
-#### POST /api/v1/chats
-
-Create a new chat conversation.
+#### POST /api/v1/chats — Create a new chat
 
 ```json
-{
-  "title": "My Chat"
-}
+{ "title": "My Chat" }
 ```
 
-#### GET /api/v1/chats
+#### GET /api/v1/chats — List chats for the authenticated user
+#### GET /api/v1/chats/{id} — Get chat with message history
+#### DELETE /api/v1/chats/{id} — Delete a chat
 
-List all chats for the authenticated user.
-
-#### GET /api/v1/chats/{chat_id}
-
-Get a chat with its message history.
-
-#### POST /api/v1/chats/{chat_id}/messages
-
-Send a message and get an LLM-generated response.
+#### POST /api/v1/chats/{id}/messages — Send message (sync response)
 
 ```json
-{
-  "content": "What is the retention policy?"
-}
+{ "content": "What is the retention policy?" }
 ```
 
-#### DELETE /api/v1/chats/{chat_id}
+Returns the assistant response + retrieved context chunks.
 
-Delete a chat and its messages.
+#### POST /api/v1/chats/{id}/messages/stream — Send message (SSE stream)
+
+Returns `text/event-stream`:
+
+```
+event: chunks
+data: [{"id":"...", "content":"...", "score": 0.85, ...}]
+
+data: {"token": "The retention policy..."}
+
+data: {"token": " requires..."}
+
+event: done
+data: {}
+```
 
 ### Health
 
-#### GET /health
-
-```json
-{
-  "status": "ok"
-}
-```
+#### GET /health — `{"status": "ok"}`
 
 ## Chunking Strategies
 
 | Strategy       | Description |
 |----------------|-------------|
 | `fixed`        | Fixed-size character windows with configurable overlap |
-| `recursive`    | Split by separators (`\n\n`, `\n`, `. `, ` `) and merge into bounded chunks (default) |
+| `recursive`    | Split by separators (`\n\n`, `\n`, `. `, ` `) and merge (default) |
 | `sentence`     | Group sentence blocks respecting max sentences and chunk size |
 | `token_approx` | Token-size approximation using character-to-token ratio |
 
-## Development
+## Frontend
 
-### Running Tests
+The admin dashboard is served at `/` and includes:
 
-```bash
-# Unit tests
-python -m pytest tests/unit/ -v
+| Route | Page |
+|-------|------|
+| `#login` / `#register` | Auth pages |
+| `#chats` / `#chats/{id}` | Chat list + live chat with SSE streaming |
+| `#documents` | Upload docs, search, view/delete chunks |
+| `#search` | Vector search + content ingest |
+| `#admin` | Role management, current user profile |
 
-# Integration tests
-python -m pytest tests/integration/ -v
+### RAG Flow
 
-# All tests with coverage
-python -m pytest --cov=app tests/
+```
+User message → save to DB → get chat history → retrieve top-k chunks from ChromaDB
+→ build prompt (system + context + history + question) → Gemini LLM
+→ stream tokens via SSE → save full response to DB → done
 ```
 
-### Creating Migrations
+Without `GEMINI_API_KEY`, the system returns a mock response showing what was retrieved.
+
+## Python 3.8 Compatibility
+
+The project targets Python 3.12+ but runs on 3.8 with these limitations:
+
+| Limitation | Workaround |
+|-----------|------------|
+| `langchain-google-genai` unavailable | Falls back to `FallbackLLM` mock |
+| `sentence-transformers` unavailable | ChromaDB queries return empty results |
+| ChromaDB `posthog` telemetry uses `dict[str, X]` | Fake `posthog` module + telemetry disabled |
+
+Upgrade to Python 3.9+ and run `pip install langchain-google-genai sentence-transformers` for full functionality.
+
+## Development
 
 ```bash
-# Auto-generate a migration from model changes
-alembic revision --autogenerate -m "describe change"
+# Run tests
+python -m pytest tests/ -v
 
-# Apply all pending migrations
-alembic upgrade head
-
-# Rollback one step
-alembic downgrade -1
+# With coverage
+python -m pytest --cov=app tests/
 ```
 
 ### Project Standards
 
-- **Python 3.12+** with modern typing (`list[str]`, `str | None`, etc.)
-- **Async SQLAlchemy 2.0** with `aiosqlite` for non-blocking DB access
+- **Python 3.12+** with modern typing (`list[str]`, `str | None`)
+- **Async SQLAlchemy 2.0** with `aiosqlite`
 - **Pydantic v2** for request/response validation
 - **Structured logging** with JSON format in production
-- **Role-based access control** enforced via FastAPI dependencies
+- **Role-based access control** via FastAPI dependencies
 - **Layer separation**: routes → services → models/utils/db
 
 ## License

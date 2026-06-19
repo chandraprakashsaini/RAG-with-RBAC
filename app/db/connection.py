@@ -1,8 +1,5 @@
 from __future__ import annotations
 
-from contextlib import asynccontextmanager
-from typing import AsyncGenerator
-
 from sqlalchemy.ext.asyncio import (
     AsyncSession,
     async_sessionmaker,
@@ -42,11 +39,6 @@ AsyncSessionLocal = async_sessionmaker(
 )
 
 
-@asynccontextmanager
-async def get_db() -> AsyncGenerator[AsyncSession, None]:
-    async with AsyncSessionLocal() as session:
-        try:
-            yield session
-        finally:
-            await session.close()
+async def get_db() -> AsyncSession:
+    return AsyncSessionLocal()
 

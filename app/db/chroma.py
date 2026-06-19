@@ -6,6 +6,13 @@ import sys
 os.environ.setdefault("ANONYMIZED_TELEMETRY", "False")
 os.environ.setdefault("CHROMA_TELEMETRY", "False")
 
+# Python 3.8 compat: prevent posthog (dict[str, X] syntax) from crashing chromadb
+import sys as _sys
+class _FakePosthog:
+    def __getattr__(self, name):
+        return lambda *args, **kwargs: None
+_sys.modules["posthog"] = _FakePosthog()
+
 try:
     __import__("pysqlite3")
     sys.modules["sqlite3"] = sys.modules.pop("pysqlite3.dbapi2")
@@ -14,6 +21,7 @@ except ImportError:
 
 import chromadb
 from chromadb.api.models.Collection import Collection
+import chromadb.config
 from chromadb.utils.embedding_functions import SentenceTransformerEmbeddingFunction
 
 from app.core.config import get_settings
@@ -29,16 +37,22 @@ def get_client() -> chromadb.PersistentClient:
     global _client
     if _client is None:
         _settings.chroma_dir.mkdir(parents=True, exist_ok=True)
-        _client = chromadb.PersistentClient(path=str(_settings.chroma_dir))
+        _client = chromadb.PersistentClient(
+            path=str(_settings.chroma_dir),
+            settings=chromadb.config.Settings(anonymized_telemetry=False),
+        )
     return _client
 
 
-def get_embedding_fn() -> SentenceTransformerEmbeddingFunction:
+def get_embedding_fn():
     global _embedding_fn
     if _embedding_fn is None:
-        _embedding_fn = SentenceTransformerEmbeddingFunction(
-            model_name=_settings.embedding_model
-        )
+        try:
+            _embedding_fn = SentenceTransformerEmbeddingFunction(
+                model_name=_settings.embedding_model
+            )
+        except Exception:
+            _embedding_fn = None
     return _embedding_fn
 
 

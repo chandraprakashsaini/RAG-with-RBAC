@@ -8,9 +8,11 @@ from pydantic import BaseModel, EmailStr
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
+from sqlalchemy.orm import selectinload
+
 from app.core.auth import CurrentUser, get_current_user, require_role
 from app.core.security import create_access_token, get_password_hash, verify_password
-from app.db.connection import get_db
+from app.db.connection import AsyncSessionLocal, get_db
 from app.db.models import User, UserRole
 
 router = APIRouter(prefix="/auth", tags=["auth"])
@@ -58,7 +60,9 @@ class RoleResponse(BaseModel):
 
 @router.post("/login", response_model=LoginResponse)
 async def login(request: LoginRequest, db: AsyncSession = Depends(get_db)):
-    result = await db.execute(select(User).where(User.email == request.email))
+    result = await db.execute(
+        select(User).where(User.email == request.email).options(selectinload(User.role))
+    )
     user = result.scalar_one_or_none()
     if not user or not verify_password(request.password, user.password_hash):
         raise HTTPException(
@@ -130,7 +134,7 @@ async def register(
 @router.get("/me", response_model=UserResponse)
 async def get_me(current_user: CurrentUser = Depends(get_current_user)):
     # Fetch full user details including role_id and timestamps
-    async with get_db() as db:
+    async with AsyncSessionLocal() as db:
         from sqlalchemy import select
         from app.db.models import User
         result = await db.execute(select(User).where(User.id == current_user.user_id))

@@ -151,8 +151,7 @@ window.ChatsPage = {
     if (!title || !title.trim()) return;
     try {
       const chat = await api.createChat(title.trim());
-      window._currentChatId = chat.id;
-      await router.refresh();
+      router.navigate('chats', chat.id);
     } catch (e) {
       alert('Error: ' + e.message);
     }

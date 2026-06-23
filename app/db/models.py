@@ -51,6 +51,7 @@ class User(Base):
 
     role: Mapped["UserRole"] = relationship(back_populates="users")
     chats: Mapped[List["Chat"]] = relationship(back_populates="user")
+    documents: Mapped[List["Document"]] = relationship(back_populates="user")
 
 
 class Chat(Base):
@@ -90,4 +91,29 @@ class ChatMessage(Base):
     )
 
     chat: Mapped["Chat"] = relationship(back_populates="messages")
+
+
+class Document(Base):
+    __tablename__ = "documents"
+
+    id: Mapped[UUID] = mapped_column(
+        Uuid, primary_key=True, default=uuid4
+    )
+    user_id: Mapped[UUID] = mapped_column(
+        Uuid, ForeignKey("users.id"), nullable=False
+    )
+    original_filename: Mapped[str] = mapped_column(String(255), nullable=False)
+    file_path: Mapped[str] = mapped_column(String(512), nullable=False)
+    file_size: Mapped[int] = mapped_column(nullable=False)
+    mime_type: Mapped[str] = mapped_column(String(128), nullable=False)
+    document_id: Mapped[UUID] = mapped_column(Uuid, nullable=False)
+    chunk_count: Mapped[int] = mapped_column(default=0, nullable=False)
+    created_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), default=utc_now, nullable=False
+    )
+    updated_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), default=utc_now, onupdate=utc_now, nullable=False
+    )
+
+    user: Mapped["User"] = relationship(back_populates="documents")
 

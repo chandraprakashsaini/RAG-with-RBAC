@@ -17,6 +17,7 @@ class ChunkingConfig(BaseModel):
 
 class IngestRequest(BaseModel):
     document_id: UUID
+    document_name: str | None = Field(default=None)
     text: str = Field(min_length=1)
     chunking: ChunkingConfig = ChunkingConfig()
 

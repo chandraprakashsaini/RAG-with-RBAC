@@ -8,32 +8,51 @@ window.DocumentsPage = {
           <div class="card-title">Upload Document</div>
         </div>
         <div class="form-group">
-          <label>Text Content</label>
-          <textarea class="form-input" id="doc-text" rows="6" placeholder="Paste or type document content here..."></textarea>
+          <label>Upload a file (.txt, .md, .csv, .json, .pdf, .docx)</label>
+          <input class="form-input" type="file" id="doc-file" accept=".txt,.md,.csv,.json,.pdf,.docx,.xml,.yml,.yaml,.html,.htm">
         </div>
-        <div class="form-row">
-          <div class="form-group">
-            <label>Chunk Strategy</label>
-            <select class="form-input" id="doc-strategy">
-              <option value="recursive">Recursive</option>
-              <option value="fixed">Fixed</option>
-              <option value="sentence">Sentence</option>
-              <option value="token_approx">Token Approx</option>
-            </select>
-          </div>
-          <div class="form-group">
-            <label>Chunk Size</label>
-            <input class="form-input" type="number" id="doc-size" value="500" min="50" max="4000">
-          </div>
-          <div class="form-group">
-            <label>Chunk Overlap</label>
-            <input class="form-input" type="number" id="doc-overlap" value="50" min="0" max="500">
-          </div>
-          <div class="form-group" style="padding-bottom:1px">
-            <button class="btn btn-primary" id="upload-doc-btn" style="margin-top:1.5rem">Upload</button>
-          </div>
+        <div class="form-group">
+          <label>Document Name (optional, defaults to filename)</label>
+          <input class="form-input" id="doc-name" placeholder="e.g. Q4 Financial Report">
         </div>
-        <div id="doc-msg" style="margin-top:0.75rem;font-size:0.85rem"></div>
+        <button class="btn btn-primary" id="upload-file-btn">Upload File</button>
+        <div class="form-group" style="margin-top:0.75rem">
+          <details>
+            <summary style="cursor:pointer;font-size:0.85rem;color:var(--text2)">Or paste text directly</summary>
+            <textarea class="form-input" id="doc-text" rows="4" placeholder="Paste document content..." style="margin-top:0.5rem"></textarea>
+            <div class="form-row" style="margin-top:0.5rem">
+              <div class="form-group">
+                <label>Strategy</label>
+                <select class="form-input" id="doc-strategy">
+                  <option value="recursive">Recursive</option>
+                  <option value="fixed">Fixed</option>
+                  <option value="sentence">Sentence</option>
+                  <option value="token_approx">Token Approx</option>
+                </select>
+              </div>
+              <div class="form-group">
+                <label>Size</label>
+                <input class="form-input" type="number" id="doc-size" value="800" min="50" max="4000">
+              </div>
+              <div class="form-group">
+                <label>Overlap</label>
+                <input class="form-input" type="number" id="doc-overlap" value="120" min="0" max="500">
+              </div>
+              <div class="form-group" style="padding-bottom:1px">
+                <button class="btn btn-primary btn-sm" id="upload-text-btn" style="margin-top:1.5rem">Upload Text</button>
+              </div>
+            </div>
+          </details>
+        </div>
+        <div id="upload-msg" style="margin-top:0.75rem;font-size:0.85rem"></div>
+      </div>
+
+      <div class="card">
+        <div class="card-header">
+          <div class="card-title">My Documents</div>
+          <button class="btn btn-sm btn-primary" id="refresh-docs-btn" style="margin-left:auto">Refresh</button>
+        </div>
+        <div id="doc-list"><div class="spinner" style="margin:1rem auto"></div></div>
       </div>
 
       <div class="card">
@@ -68,40 +87,143 @@ window.DocumentsPage = {
           <div class="form-group" style="padding-bottom:1px">
             <button class="btn btn-primary btn-sm" id="view-chunks-btn" style="margin-top:1.5rem">View</button>
           </div>
-          <div class="form-group" style="padding-bottom:1px">
-            <button class="btn btn-danger btn-sm" id="delete-doc-btn" style="margin-top:1.5rem">Delete</button>
-          </div>
         </div>
         <div id="chunks-view" style="margin-top:0.75rem"></div>
       </div>
     `;
   },
 
+  async loadDocs() {
+    const container = document.getElementById('doc-list');
+    if (!container) return;
+    try {
+      const data = await api.listDocuments();
+      const docs = data.documents || [];
+      if (!docs.length) {
+        container.innerHTML = '<div class="empty-state">No documents uploaded yet. Use the form above to upload.</div>';
+        return;
+      }
+      container.innerHTML = `
+        <table style="width:100%;border-collapse:collapse;font-size:0.85rem">
+          <thead>
+            <tr style="border-bottom:1px solid var(--border)">
+              <th style="padding:0.5rem;text-align:left">Filename</th>
+              <th style="padding:0.5rem;text-align:left">Size</th>
+              <th style="padding:0.5rem;text-align:left">Type</th>
+              <th style="padding:0.5rem;text-align:center">Chunks</th>
+              <th style="padding:0.5rem;text-align:left">Created</th>
+              <th style="padding:0.5rem;text-align:center">Actions</th>
+            </tr>
+          </thead>
+          <tbody>
+            ${docs.map(d => {
+              const size = d.file_size > 1024 * 1024
+                ? (d.file_size / 1024 / 1024).toFixed(1) + ' MB'
+                : d.file_size > 1024
+                  ? (d.file_size / 1024).toFixed(0) + ' KB'
+                  : d.file_size + ' B';
+              const created = new Date(d.created_at).toLocaleDateString();
+              return `
+                <tr style="border-bottom:1px solid var(--border)">
+                  <td style="padding:0.5rem">${d.original_filename}</td>
+                  <td style="padding:0.5rem;color:var(--text2)">${size}</td>
+                  <td style="padding:0.5rem;color:var(--text2)">${d.mime_type}</td>
+                  <td style="padding:0.5rem;text-align:center">${d.chunk_count}</td>
+                  <td style="padding:0.5rem;color:var(--text2)">${created}</td>
+                  <td style="padding:0.5rem;text-align:center">
+                    <button class="btn btn-sm btn-primary view-chunks-action" data-id="${d.id}" title="View chunks">Chunks</button>
+                    <a href="${api.downloadDocumentUrl(d.id)}" class="btn btn-sm btn-primary" download title="Download file">Download</a>
+                    <button class="btn btn-sm btn-danger delete-doc-action" data-id="${d.id}" title="Delete document">Delete</button>
+                  </td>
+                </tr>
+              `;
+            }).join('')}
+          </tbody>
+        </table>
+      `;
+      container.querySelectorAll('.view-chunks-action').forEach(btn => {
+        btn.addEventListener('click', () => {
+          document.getElementById('doc-id').value = btn.dataset.id;
+          document.getElementById('view-chunks-btn').click();
+        });
+      });
+      container.querySelectorAll('.delete-doc-action').forEach(btn => {
+        btn.addEventListener('click', async () => {
+          const id = btn.dataset.id;
+          if (!confirm('Delete this document and all its chunks?')) return;
+          btn.disabled = true;
+          try {
+            await api.deleteDocument(id);
+            this.loadDocs();
+          } catch (e) {
+            alert(e.message);
+            btn.disabled = false;
+          }
+        });
+      });
+    } catch (e) {
+      container.innerHTML = `<p style="color:var(--danger)">Failed to load documents: ${e.message}</p>`;
+    }
+  },
+
   init() {
-    // Upload
-    const uploadBtn = document.getElementById('upload-doc-btn');
-    const docMsg = document.getElementById('doc-msg');
-    uploadBtn?.addEventListener('click', async () => {
+    this.loadDocs();
+
+    // File upload
+    const uploadFileBtn = document.getElementById('upload-file-btn');
+    const uploadMsg = document.getElementById('upload-msg');
+    uploadFileBtn?.addEventListener('click', async () => {
+      const fileInput = document.getElementById('doc-file');
+      const file = fileInput.files[0];
+      if (!file) { uploadMsg.textContent = 'Please select a file'; uploadMsg.style.color = 'var(--danger)'; return; }
+      const docName = document.getElementById('doc-name').value.trim() || null;
+      uploadFileBtn.disabled = true;
+      uploadFileBtn.textContent = 'Uploading...';
+      try {
+        const data = await api.uploadDocument(file, docName);
+        uploadMsg.innerHTML = `Uploaded <strong>${data.original_filename}</strong> — ${data.chunk_count} chunks created.`;
+        uploadMsg.style.color = 'var(--success)';
+        fileInput.value = '';
+        document.getElementById('doc-name').value = '';
+        this.loadDocs();
+      } catch (e) {
+        uploadMsg.textContent = e.message;
+        uploadMsg.style.color = 'var(--danger)';
+      } finally {
+        uploadFileBtn.disabled = false;
+        uploadFileBtn.textContent = 'Upload File';
+      }
+    });
+
+    // Text upload
+    const uploadTextBtn = document.getElementById('upload-text-btn');
+    uploadTextBtn?.addEventListener('click', async () => {
       const text = document.getElementById('doc-text').value.trim();
-      if (!text) { docMsg.textContent = 'Text content is required'; docMsg.style.color = 'var(--danger)'; return; }
-      uploadBtn.disabled = true;
-      uploadBtn.textContent = 'Uploading...';
+      if (!text) { uploadMsg.textContent = 'Text content is required'; uploadMsg.style.color = 'var(--danger)'; return; }
+      const docName = document.getElementById('doc-name').value.trim() || null;
+      uploadTextBtn.disabled = true;
+      uploadTextBtn.textContent = 'Uploading...';
       try {
         const data = await api.createDocument(text, {
           strategy: document.getElementById('doc-strategy').value,
           chunk_size: parseInt(document.getElementById('doc-size').value),
           chunk_overlap: parseInt(document.getElementById('doc-overlap').value),
         });
-        docMsg.innerHTML = `Uploaded! Document ID: <code>${data.id}</code> - ${data.chunk_count} chunks created.`;
-        docMsg.style.color = 'var(--success)';
+        uploadMsg.innerHTML = `Text uploaded! ${data.chunk_count} chunks created. ID: <code>${data.id}</code>`;
+        uploadMsg.style.color = 'var(--success)';
+        document.getElementById('doc-text').value = '';
+        this.loadDocs();
       } catch (e) {
-        docMsg.textContent = e.message;
-        docMsg.style.color = 'var(--danger)';
+        uploadMsg.textContent = e.message;
+        uploadMsg.style.color = 'var(--danger)';
       } finally {
-        uploadBtn.disabled = false;
-        uploadBtn.textContent = 'Upload';
+        uploadTextBtn.disabled = false;
+        uploadTextBtn.textContent = 'Upload Text';
       }
     });
+
+    // Refresh document list
+    document.getElementById('refresh-docs-btn')?.addEventListener('click', () => this.loadDocs());
 
     // Search
     const searchBtn = document.getElementById('search-btn');
@@ -161,23 +283,6 @@ window.DocumentsPage = {
         chunksView.innerHTML = `<p style="color:var(--danger)">${e.message}</p>`;
       } finally {
         viewBtn.disabled = false;
-      }
-    });
-
-    // Delete document
-    const delBtn = document.getElementById('delete-doc-btn');
-    delBtn?.addEventListener('click', async () => {
-      const docId = document.getElementById('doc-id').value.trim();
-      if (!docId) return;
-      if (!confirm('Delete this document and all its chunks?')) return;
-      delBtn.disabled = true;
-      try {
-        await api.deleteDocument(docId);
-        document.getElementById('chunks-view').innerHTML = '<p style="color:var(--success)">Document deleted.</p>';
-      } catch (e) {
-        document.getElementById('chunks-view').innerHTML = `<p style="color:var(--danger)">${e.message}</p>`;
-      } finally {
-        delBtn.disabled = false;
       }
     });
   }

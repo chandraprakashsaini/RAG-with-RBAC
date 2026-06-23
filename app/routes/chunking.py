@@ -28,10 +28,12 @@ async def ingest_document(
     stored_chunk_ids = await store_document_chunks(
         document_id=str(request.document_id),
         chunking_result=chunking_result,
+        document_name=request.document_name,
     )
 
     return {
         "document_id": str(request.document_id),
+        "document_name": request.document_name,
         "chunking_strategy": chunking_result.strategy,
         "chunk_count": chunking_result.chunk_count,
         "stored_chunk_ids": stored_chunk_ids,
@@ -48,5 +50,6 @@ async def search(
         query=request.query,
         top_k=request.top_k,
         document_id=str(request.document_id) if request.document_id else None,
+        document_name=request.document_name,
     )
 

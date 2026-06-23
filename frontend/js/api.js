@@ -55,9 +55,30 @@ class ApiClient {
   createDocument(text, chunking) {
     return this.post('/api/v1/documents', { text, chunking });
   }
+  listDocuments() { return this.get('/api/v1/documents'); }
+  getDocument(id) { return this.get(`/api/v1/documents/${id}`); }
   deleteDocument(id) { return this.del(`/api/v1/documents/${id}`); }
   getDocumentChunks(id, limit = 50, offset = 0) {
     return this.get(`/api/v1/documents/${id}/chunks?limit=${limit}&offset=${offset}`);
+  }
+  downloadDocumentUrl(id) { return `${API_BASE}/api/v1/documents/${id}/download`; }
+
+  uploadDocument(file, documentName) {
+    const formData = new FormData();
+    formData.append('file', file);
+    if (documentName) formData.append('document_name', documentName);
+    return fetch(`${API_BASE}/api/v1/documents/upload`, {
+      method: 'POST',
+      headers: this.token ? { 'Authorization': `Bearer ${this.token}` } : {},
+      body: formData,
+    }).then(async res => {
+      const data = await res.json();
+      if (!res.ok) {
+        const msg = data?.detail || data?.error?.message || data?.message || res.statusText;
+        throw new Error(typeof msg === 'string' ? msg : JSON.stringify(msg));
+      }
+      return data;
+    });
   }
 
   // Ingest / Search

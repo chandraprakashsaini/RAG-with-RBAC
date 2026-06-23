@@ -15,7 +15,7 @@ const Router = {
   },
 
   async refresh() {
-    this.render();
+    await this.render();
   },
 
   async render() {

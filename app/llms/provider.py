@@ -47,3 +47,21 @@ def get_llm():
         model=settings.gemini_model,
         google_api_key=settings.gemini_api_key,
     )
+
+
+@lru_cache
+def get_decision_llm():
+    settings = get_settings()
+    model = settings.rag_decision_model or settings.gemini_model
+    if HAS_LANGCHAIN:
+        return ChatGoogleGenerativeAI(
+            model=model,
+            google_api_key=settings.gemini_api_key,
+            temperature=settings.rag_decision_temperature,
+            top_p=0.95,
+            convert_system_message_to_human=True,
+        )
+    return FallbackLLM(
+        model=model,
+        google_api_key=settings.gemini_api_key,
+    )

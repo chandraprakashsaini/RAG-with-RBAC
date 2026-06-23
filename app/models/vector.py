@@ -8,6 +8,7 @@ class SearchRequest(BaseModel):
     query: str = Field(min_length=1)
     top_k: int = Field(default=5, gt=0, le=20)
     document_id: Optional[UUID] = None
+    document_name: Optional[str] = None
 
 
 class SearchHit(BaseModel):

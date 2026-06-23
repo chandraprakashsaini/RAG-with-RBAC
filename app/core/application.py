@@ -24,7 +24,10 @@ _FRONTEND_DIR = os.path.join(_HERE, "..", "..", "frontend")
 class SPAStaticFiles(StaticFiles):
     async def get_response(self, path: str, scope):
         try:
-            return await super().get_response(path, scope)
+            resp = await super().get_response(path, scope)
+            if path.endswith(".js") or path.endswith(".css"):
+                resp.headers["Cache-Control"] = "no-cache, no-store, must-revalidate"
+            return resp
         except Exception:
             return await super().get_response("index.html", scope)
 

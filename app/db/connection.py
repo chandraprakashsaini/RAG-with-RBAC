@@ -11,6 +11,8 @@ from app.core.config import get_settings
 
 _settings = get_settings()
 
+DATABASE_URL = _settings.database_url
+
 
 class Base(DeclarativeBase):
     pass
@@ -39,6 +41,10 @@ AsyncSessionLocal = async_sessionmaker(
 )
 
 
-async def get_db() -> AsyncSession:
-    return AsyncSessionLocal()
+async def get_db():
+    session = AsyncSessionLocal()
+    try:
+        yield session
+    finally:
+        await session.close()
 

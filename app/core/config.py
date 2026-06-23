@@ -25,6 +25,7 @@ class Settings(BaseSettings):
 
     chroma_dir: Path = Field(default=Path("./data/chroma"), alias="CHROMA_DIR")
     chroma_collection: str = Field(default="documents", alias="CHROMA_COLLECTION")
+    documents_dir: Path = Field(default=Path("./documents"), alias="DOCUMENTS_DIR")
     embedding_model: str = Field(
         default="all-MiniLM-L6-v2", alias="EMBEDDING_MODEL"
     )
@@ -43,6 +44,19 @@ class Settings(BaseSettings):
     )
     rag_top_k: int = Field(default=5, alias="RAG_TOP_K")
     rag_min_score: float = Field(default=0.0, alias="RAG_MIN_SCORE")
+
+    rag_query_rewrite_enabled: bool = Field(
+        default=True, alias="RAG_QUERY_REWRITE_ENABLED"
+    )
+    rag_retrieval_decision_enabled: bool = Field(
+        default=True, alias="RAG_RETRIEVAL_DECISION_ENABLED"
+    )
+    rag_decision_model: str | None = Field(
+        default=None, alias="RAG_DECISION_MODEL"
+    )
+    rag_decision_temperature: float = Field(
+        default=0.0, alias="RAG_DECISION_TEMPERATURE"
+    )
 
     log_level: str = Field(default="INFO", alias="LOG_LEVEL")
     log_format: str = Field(default="json", alias="LOG_FORMAT")

@@ -3,8 +3,11 @@ from __future__ import annotations
 from functools import lru_cache
 from pathlib import Path
 
-from pydantic import Field
+from pydantic import Field, field_validator
 from pydantic_settings import BaseSettings, SettingsConfigDict
+
+_INSECURE_JWT_SECRET_DEFAULT = "change-me-in-production"
+_ALLOWED_JWT_ALGORITHMS = {"HS256", "HS384", "HS512", "RS256", "RS384", "RS512"}
 
 
 class Settings(BaseSettings):
@@ -31,7 +34,7 @@ class Settings(BaseSettings):
     )
 
     jwt_secret: str = Field(
-        default="change-me-in-production", alias="JWT_SECRET"
+        default=_INSECURE_JWT_SECRET_DEFAULT, alias="JWT_SECRET"
     )
     jwt_algorithm: str = Field(default="HS256", alias="JWT_ALGORITHM")
     jwt_expire_minutes: int = Field(default=60, alias="JWT_EXPIRE_MINUTES")
@@ -60,6 +63,38 @@ class Settings(BaseSettings):
 
     log_level: str = Field(default="INFO", alias="LOG_LEVEL")
     log_format: str = Field(default="json", alias="LOG_FORMAT")
+
+    seed_demo_data: bool = Field(default=False, alias="SEED_DEMO_DATA")
+    cors_origins: list[str] = Field(
+        default_factory=lambda: ["http://localhost:8000"], alias="CORS_ORIGINS"
+    )
+    max_upload_bytes: int = Field(default=25_000_000, alias="MAX_UPLOAD_BYTES")
+    llm_timeout: float = Field(default=60.0, alias="LLM_TIMEOUT")
+    login_rate_limit: str = Field(default="5/minute", alias="LOGIN_RATE_LIMIT")
+
+    @field_validator("jwt_secret")
+    @classmethod
+    def _reject_insecure_jwt_secret(cls, v: str) -> str:
+        if v == _INSECURE_JWT_SECRET_DEFAULT:
+            raise ValueError(
+                "JWT_SECRET must be set to a non-default value (the default "
+                "'change-me-in-production' is publicly known and insecure). "
+                "Set JWT_SECRET in your environment or .env file."
+            )
+        if len(v) < 16:
+            raise ValueError("JWT_SECRET must be at least 16 characters long.")
+        return v
+
+    @field_validator("jwt_algorithm")
+    @classmethod
+    def _restrict_jwt_algorithm(cls, v: str) -> str:
+        v_upper = v.upper()
+        if v_upper not in _ALLOWED_JWT_ALGORITHMS:
+            raise ValueError(
+                f"JWT_ALGORITHM '{v}' is not allowed. "
+                f"Allowed: {sorted(_ALLOWED_JWT_ALGORITHMS)}."
+            )
+        return v_upper
 
 
 @lru_cache

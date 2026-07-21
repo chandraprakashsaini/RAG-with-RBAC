@@ -8,11 +8,11 @@ window.LoginPage = {
           <div id="login-form">
             <div class="form-group">
               <label>Email</label>
-              <input class="form-input" type="email" id="login-email" value="alice@example.com">
+              <input class="form-input" type="email" id="login-email" placeholder="you@example.com">
             </div>
             <div class="form-group">
               <label>Password</label>
-              <input class="form-input" type="password" id="login-password" value="password123">
+              <input class="form-input" type="password" id="login-password" placeholder="Your password">
             </div>
             <button class="btn btn-primary btn-block" id="login-btn">Sign In</button>
             <p style="text-align:center;margin-top:1rem;font-size:0.85rem;color:var(--text2)">
@@ -91,7 +91,7 @@ window.RegisterPage = {
     try {
       const roles = await api.getRoles();
       const sel = document.getElementById('reg-role');
-      sel.innerHTML = roles.map(r => `<option value="${r.id}">${r.name}</option>`).join('');
+      sel.innerHTML = roles.map(r => `<option value="${escapeHtml(r.id)}">${escapeHtml(r.name)}</option>`).join('');
     } catch {}
 
     const btn = document.getElementById('register-btn');

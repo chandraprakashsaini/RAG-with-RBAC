@@ -26,7 +26,6 @@ const Router = {
       window.location.hash = 'login';
       return;
     }
-
     if (api.isAuthenticated() && ['login', 'register'].includes(hash.split('/')[0])) {
       window.location.hash = 'chats';
       return;
@@ -53,6 +52,8 @@ const Router = {
       page = ChatsPage;
     } else if (hash === 'admin') {
       page = AdminPage;
+    } else if (hash === 'users') {
+      page = UsersPage;
     } else if (hash === 'documents') {
       page = DocumentsPage;
     } else if (hash === 'search') {
@@ -67,6 +68,7 @@ const Router = {
       { route: 'chats', label: 'Chats', icon: '\uD83D\uDCAC' },
       { route: 'documents', label: 'Documents', icon: '\uD83D\uDCC4' },
       { route: 'search', label: 'Search', icon: '\uD83D\uDD0D' },
+      { route: 'users', label: 'Users', icon: '\uD83D\uDC65' },
       { route: 'admin', label: 'Admin', icon: '\u2699\uFE0F' },
     ];
 
@@ -83,7 +85,7 @@ const Router = {
                 <span>${n.label}</span>
               </button>
             `).join('')}
-            <button class="nav-item logout" onclick="Router.logout()">
+            <button class="nav-item logout" onclick="router.logout()">
               <span>\uD83D\uDEAA</span>
               <span>Logout</span>
             </button>
@@ -101,7 +103,7 @@ const Router = {
       mainContent.innerHTML = html;
       page.init();
     } catch (e) {
-      mainContent.innerHTML = `<div class="empty-state"><h3>Error</h3><p>${e.message}</p></div>`;
+      mainContent.innerHTML = `<div class="empty-state"><h3>Error</h3><p>${escapeHtml(e.message)}</p></div>`;
     }
   },
 

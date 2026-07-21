@@ -126,7 +126,7 @@ def register_exception_handlers(app: FastAPI) -> None:
             content={
                 "error": {
                     "message": "Database integrity error",
-                    "details": str(exc.orig),
+                    "details": str(exc.orig) if _settings.debug else None,
                 }
             },
         )
@@ -138,7 +138,7 @@ def register_exception_handlers(app: FastAPI) -> None:
             content={
                 "error": {
                     "message": "Database error",
-                    "details": str(exc),
+                    "details": str(exc) if _settings.debug else None,
                 }
             },
         )

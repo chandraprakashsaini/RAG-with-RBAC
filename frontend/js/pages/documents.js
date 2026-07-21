@@ -55,6 +55,41 @@ window.DocumentsPage = {
         <div id="doc-list"><div class="spinner" style="margin:1rem auto"></div></div>
       </div>
 
+      <!-- Share modal -->
+      <div id="share-modal" style="display:none;position:fixed;inset:0;background:rgba(0,0,0,0.6);z-index:100;align-items:center;justify-content:center">
+        <div class="card" style="width:100%;max-width:520px;max-height:80vh;overflow-y:auto">
+          <div class="card-header">
+            <div class="card-title">Share Document</div>
+            <button class="btn btn-ghost btn-sm" onclick="DocumentsPage.closeShare()">Close</button>
+          </div>
+          <p style="color:var(--text2);font-size:0.85rem;margin-bottom:1rem" id="share-doc-filename"></p>
+
+          <div class="card-header">
+            <div class="card-title" style="font-size:0.95rem">Current Permissions</div>
+          </div>
+          <div id="share-perms-list"><div class="spinner" style="margin:1rem auto"></div></div>
+
+          <div style="margin-top:1.5rem;border-top:1px solid var(--border);padding-top:1rem">
+            <div class="card-header">
+              <div class="card-title" style="font-size:0.95rem">Grant Role Access</div>
+            </div>
+            <div class="form-row">
+              <div class="form-group" style="flex:1">
+                <label>Role</label>
+                <select class="form-input" id="share-role-select"></select>
+              </div>
+            </div>
+            <div style="display:flex;gap:1.5rem;margin:0.5rem 0 1rem">
+              <label><input type="checkbox" id="share-can-read" checked> Read</label>
+              <label><input type="checkbox" id="share-can-write"> Write</label>
+              <label><input type="checkbox" id="share-can-delete"> Delete</label>
+            </div>
+            <button class="btn btn-primary btn-sm" id="share-grant-btn">Grant Access</button>
+            <span id="share-msg" style="font-size:0.85rem;margin-left:0.75rem"></span>
+          </div>
+        </div>
+      </div>
+
       <div class="card">
         <div class="card-header">
           <div class="card-title">Search Documents</div>
@@ -108,6 +143,7 @@ window.DocumentsPage = {
           <thead>
             <tr style="border-bottom:1px solid var(--border)">
               <th style="padding:0.5rem;text-align:left">Filename</th>
+              <th style="padding:0.5rem;text-align:left">Owner</th>
               <th style="padding:0.5rem;text-align:left">Size</th>
               <th style="padding:0.5rem;text-align:left">Type</th>
               <th style="padding:0.5rem;text-align:center">Chunks</th>
@@ -125,15 +161,17 @@ window.DocumentsPage = {
               const created = new Date(d.created_at).toLocaleDateString();
               return `
                 <tr style="border-bottom:1px solid var(--border)">
-                  <td style="padding:0.5rem">${d.original_filename}</td>
-                  <td style="padding:0.5rem;color:var(--text2)">${size}</td>
-                  <td style="padding:0.5rem;color:var(--text2)">${d.mime_type}</td>
-                  <td style="padding:0.5rem;text-align:center">${d.chunk_count}</td>
-                  <td style="padding:0.5rem;color:var(--text2)">${created}</td>
+                  <td style="padding:0.5rem">${escapeHtml(d.original_filename)}</td>
+                  <td style="padding:0.5rem;color:var(--text2)">${escapeHtml(d.owner_name) || '-'}</td>
+                  <td style="padding:0.5rem;color:var(--text2)">${escapeHtml(size)}</td>
+                  <td style="padding:0.5rem;color:var(--text2)">${escapeHtml(d.mime_type)}</td>
+                  <td style="padding:0.5rem;text-align:center">${escapeHtml(d.chunk_count)}</td>
+                  <td style="padding:0.5rem;color:var(--text2)">${escapeHtml(created)}</td>
                   <td style="padding:0.5rem;text-align:center">
-                    <button class="btn btn-sm btn-primary view-chunks-action" data-id="${d.id}" title="View chunks">Chunks</button>
-                    <a href="${api.downloadDocumentUrl(d.id)}" class="btn btn-sm btn-primary" download title="Download file">Download</a>
-                    <button class="btn btn-sm btn-danger delete-doc-action" data-id="${d.id}" title="Delete document">Delete</button>
+                    <button class="btn btn-sm btn-primary view-chunks-action" data-id="${escapeHtml(d.id)}" title="View chunks">Chunks</button>
+                    <button class="btn btn-sm btn-primary download-doc-action" data-id="${escapeHtml(d.id)}" title="Download file">DL</button>
+                    <button class="btn btn-sm btn-primary share-doc-action" data-id="${escapeHtml(d.id)}" data-name="${escapeHtml(d.original_filename)}" title="Share">Share</button>
+                    <button class="btn btn-sm btn-danger delete-doc-action" data-id="${escapeHtml(d.id)}" title="Delete document">Delete</button>
                   </td>
                 </tr>
               `;
@@ -146,6 +184,25 @@ window.DocumentsPage = {
           document.getElementById('doc-id').value = btn.dataset.id;
           document.getElementById('view-chunks-btn').click();
         });
+      });
+      container.querySelectorAll('.download-doc-action').forEach(btn => {
+        btn.addEventListener('click', async () => {
+          try {
+            const { url, filename } = await api.downloadDocument(btn.dataset.id);
+            const a = document.createElement('a');
+            a.href = url;
+            a.download = filename;
+            document.body.appendChild(a);
+            a.click();
+            a.remove();
+            setTimeout(() => URL.revokeObjectURL(url), 1000);
+          } catch (e) {
+            alert(e.message);
+          }
+        });
+      });
+      container.querySelectorAll('.share-doc-action').forEach(btn => {
+        btn.addEventListener('click', () => this.openShare(btn.dataset.id, btn.dataset.name));
       });
       container.querySelectorAll('.delete-doc-action').forEach(btn => {
         btn.addEventListener('click', async () => {
@@ -162,8 +219,112 @@ window.DocumentsPage = {
         });
       });
     } catch (e) {
-      container.innerHTML = `<p style="color:var(--danger)">Failed to load documents: ${e.message}</p>`;
+      container.innerHTML = `<p style="color:var(--danger)">Failed to load documents: ${escapeHtml(e.message)}</p>`;
     }
+  },
+
+  async openShare(docId, docName) {
+    const modal = document.getElementById('share-modal');
+    document.getElementById('share-doc-filename').textContent = docName;
+    document.getElementById('share-msg').textContent = '';
+    modal.style.display = 'flex';
+    modal.dataset.docId = docId;
+
+    try {
+      const [perms, roles] = await Promise.all([
+        api.getDocumentPermissions(docId),
+        api.getRoles()
+      ]);
+
+      const roleSelect = document.getElementById('share-role-select');
+      roleSelect.innerHTML = roles.map(r => `<option value="${escapeHtml(r.id)}">${escapeHtml(r.name)}</option>`).join('');
+
+      const permsList = document.getElementById('share-perms-list');
+      if (!perms.length) {
+        permsList.innerHTML = '<p style="color:var(--text2);font-size:0.85rem">No role permissions set. Only the document owner can access.</p>';
+      } else {
+        permsList.innerHTML = perms.map(p => `
+          <div style="display:flex;align-items:center;justify-content:space-between;padding:0.5rem 0;border-bottom:1px solid var(--border)">
+            <div>
+              <span class="badge badge-${escapeHtml(p.role_name)}">${escapeHtml(p.role_name)}</span>
+              <span style="font-size:0.8rem;color:var(--text2);margin-left:0.5rem">
+                ${p.can_read ? 'Read' : ''}${p.can_write ? ' Write' : ''}${p.can_delete ? ' Delete' : ''}
+              </span>
+              <span style="font-size:0.75rem;color:var(--text2);margin-left:0.5rem">by ${escapeHtml(p.granted_by_name)}</span>
+            </div>
+            <div>
+              <input type="checkbox" class="perm-toggle" data-perm-id="${escapeHtml(p.id)}" data-field="can_read" ${p.can_read ? 'checked' : ''} title="Read">
+              <input type="checkbox" class="perm-toggle" data-perm-id="${escapeHtml(p.id)}" data-field="can_write" ${p.can_write ? 'checked' : ''} title="Write">
+              <input type="checkbox" class="perm-toggle" data-perm-id="${escapeHtml(p.id)}" data-field="can_delete" ${p.can_delete ? 'checked' : ''} title="Delete">
+              <button class="btn btn-danger btn-sm" data-perm-id="${escapeHtml(p.id)}" title="Revoke" style="margin-left:0.5rem">X</button>
+            </div>
+          </div>
+        `).join('');
+      }
+
+      this._bindPermEvents(docId);
+    } catch (e) {
+      document.getElementById('share-perms-list').innerHTML = `<p style="color:var(--danger)">${escapeHtml(e.message)}</p>`;
+    }
+
+    document.getElementById('share-grant-btn').onclick = async () => {
+      const roleId = document.getElementById('share-role-select').value;
+      const canRead = document.getElementById('share-can-read').checked;
+      const canWrite = document.getElementById('share-can-write').checked;
+      const canDelete = document.getElementById('share-can-delete').checked;
+      const msg = document.getElementById('share-msg');
+      msg.style.color = 'var(--text2)';
+      msg.textContent = 'Granting...';
+
+      try {
+        await api.grantDocumentPermission(docId, {
+          role_id: roleId,
+          can_read: canRead,
+          can_write: canWrite,
+          can_delete: canDelete,
+        });
+        msg.textContent = 'Access granted!';
+        msg.style.color = 'var(--success)';
+        this.openShare(docId, docName);
+      } catch (e) {
+        msg.textContent = e.message;
+        msg.style.color = 'var(--danger)';
+      }
+    };
+  },
+
+  _bindPermEvents(docId) {
+    document.querySelectorAll('.perm-toggle').forEach(cb => {
+      cb.addEventListener('change', async () => {
+        const permId = cb.dataset.permId;
+        const field = cb.dataset.field;
+        const update = { can_read: null, can_write: null, can_delete: null };
+        update[field] = cb.checked;
+        try {
+          await api.updateDocumentPermission(docId, permId, update);
+        } catch (e) {
+          alert(e.message);
+          cb.checked = !cb.checked;
+        }
+      });
+    });
+
+    document.querySelectorAll('.btn-danger.btn-sm[data-perm-id]').forEach(btn => {
+      btn.addEventListener('click', async () => {
+        if (!confirm('Revoke this role\'s access?')) return;
+        try {
+          await api.revokeDocumentPermission(docId, btn.dataset.permId);
+          const docName = document.getElementById('share-doc-filename').textContent;
+          this.openShare(docId, docName);
+        } catch (e) {
+          alert(e.message);
+        }
+      });
+    });
+  },
+
+  closeShare() {
+    document.getElementById('share-modal').style.display = 'none';
   },
 
   init() {
@@ -181,7 +342,7 @@ window.DocumentsPage = {
       uploadFileBtn.textContent = 'Uploading...';
       try {
         const data = await api.uploadDocument(file, docName);
-        uploadMsg.innerHTML = `Uploaded <strong>${data.original_filename}</strong> — ${data.chunk_count} chunks created.`;
+        uploadMsg.innerHTML = `Uploaded <strong>${escapeHtml(data.original_filename)}</strong> — ${escapeHtml(data.chunk_count)} chunks created.`;
         uploadMsg.style.color = 'var(--success)';
         fileInput.value = '';
         document.getElementById('doc-name').value = '';
@@ -209,7 +370,7 @@ window.DocumentsPage = {
           chunk_size: parseInt(document.getElementById('doc-size').value),
           chunk_overlap: parseInt(document.getElementById('doc-overlap').value),
         });
-        uploadMsg.innerHTML = `Text uploaded! ${data.chunk_count} chunks created. ID: <code>${data.id}</code>`;
+        uploadMsg.innerHTML = `Text uploaded! ${escapeHtml(data.chunk_count)} chunks created. ID: <code>${escapeHtml(data.id)}</code>`;
         uploadMsg.style.color = 'var(--success)';
         document.getElementById('doc-text').value = '';
         this.loadDocs();
@@ -238,20 +399,20 @@ window.DocumentsPage = {
         if (!data.count) {
           searchResults.innerHTML = '<p style="color:var(--text2)">No results found.</p>';
         } else {
-          searchResults.innerHTML = `<p style="color:var(--text2);margin-bottom:0.75rem">${data.count} result(s)</p>
+          searchResults.innerHTML = `<p style="color:var(--text2);margin-bottom:0.75rem">${escapeHtml(data.count)} result(s)</p>
             ${data.hits.map(h => `
               <div class="search-result card" style="padding:0.75rem">
                 <div style="display:flex;justify-content:space-between;font-size:0.8rem">
-                  <span>Doc: ${h.document || 'N/A'}</span>
-                  <span style="color:var(--text2)">Score: ${h.score?.toFixed(3) || 'N/A'}</span>
+                  <span>Doc: ${escapeHtml(h.document) || 'N/A'}</span>
+                  <span style="color:var(--text2)">Score: ${h.score != null ? h.score.toFixed(3) : 'N/A'}</span>
                 </div>
-                <div class="result-content">${h.content || '(no content)'}</div>
+                <div class="result-content">${escapeHtml(h.content) || '(no content)'}</div>
               </div>
             `).join('')}
           `;
         }
       } catch (e) {
-        searchResults.innerHTML = `<p style="color:var(--danger)">${e.message}</p>`;
+        searchResults.innerHTML = `<p style="color:var(--danger)">${escapeHtml(e.message)}</p>`;
       } finally {
         searchBtn.disabled = false;
       }
@@ -270,17 +431,17 @@ window.DocumentsPage = {
         if (!data.chunks?.length) {
           chunksView.innerHTML = '<p style="color:var(--text2)">No chunks found for this document.</p>';
         } else {
-          chunksView.innerHTML = `<p style="color:var(--text2);margin-bottom:0.5rem">${data.total} chunk(s):</p>
+          chunksView.innerHTML = `<p style="color:var(--text2);margin-bottom:0.5rem">${escapeHtml(data.total)} chunk(s):</p>
             ${data.chunks.map((c, i) => `
               <div class="chunk-item">
-                <div class="chunk-meta">#${i + 1} | ID: ${c.id}</div>
-                <div>${c.content ? c.content.slice(0, 300) + (c.content.length > 300 ? '...' : '') : '(empty)'}</div>
+                <div class="chunk-meta">#${i + 1} | ID: ${escapeHtml(c.id)}</div>
+                <div>${escapeHtml(c.content ? c.content.slice(0, 300) + (c.content.length > 300 ? '...' : '') : '(empty)')}</div>
               </div>
             `).join('')}
           `;
         }
       } catch (e) {
-        chunksView.innerHTML = `<p style="color:var(--danger)">${e.message}</p>`;
+        chunksView.innerHTML = `<p style="color:var(--danger)">${escapeHtml(e.message)}</p>`;
       } finally {
         viewBtn.disabled = false;
       }

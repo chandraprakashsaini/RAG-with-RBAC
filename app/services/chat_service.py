@@ -20,10 +20,13 @@ async def create_chat(user_id: UUID, title: str) -> Chat:
         return chat
 
 
-async def list_chats(user_id: UUID) -> list[Chat]:
+async def list_chats(user_id: UUID, limit: int = 100) -> list[Chat]:
     async with AsyncSessionLocal() as db:
         result = await db.execute(
-            select(Chat).where(Chat.user_id == user_id)
+            select(Chat)
+            .where(Chat.user_id == user_id)
+            .order_by(Chat.updated_at.desc())
+            .limit(limit)
         )
         return list(result.scalars().all())
 
@@ -36,13 +39,16 @@ async def get_chat(chat_id: UUID, user_id: UUID) -> Chat | None:
         return result.scalar_one_or_none()
 
 
-async def get_messages(chat_id: UUID) -> list[ChatMessage]:
+async def get_messages(chat_id: UUID, limit: int | None = 50) -> list[ChatMessage]:
     async with AsyncSessionLocal() as db:
-        result = await db.execute(
+        stmt = (
             select(ChatMessage)
             .where(ChatMessage.chat_id == chat_id)
             .order_by(ChatMessage.created_at)
         )
+        if limit is not None:
+            stmt = stmt.limit(limit)
+        result = await db.execute(stmt)
         return list(result.scalars().all())
 
 
@@ -75,7 +81,7 @@ async def send_message(chat_id: UUID, user_id: UUID, content: str) -> tuple[Chat
 
     user_message = await add_message(chat_id, "user", content)
 
-    messages = await get_messages(chat_id)
+    messages = await get_messages(chat_id, limit=50)
 
     assistant_response, retrieved_chunks = await generate_rag_response(
         user_message=content,
@@ -95,18 +101,23 @@ async def send_message_stream(
         raise ValueError("Chat not found")
 
     await add_message(chat_id, "user", content)
-    messages = await get_messages(chat_id)
+    messages = await get_messages(chat_id, limit=50)
 
     full_response: list[str] = []
-    async for token in stream_rag_response(
-        user_message=content,
-        chat_messages=messages,
-    ):
-        if token.startswith("[CHUNKS]") and token.endswith("[/CHUNKS]"):
-            yield token
-        else:
-            full_response.append(token)
-            yield token
-
-    complete_content = "".join(full_response)
-    await add_message(chat_id, "assistant", complete_content)
+    try:
+        async for token in stream_rag_response(
+            user_message=content,
+            chat_messages=messages,
+        ):
+            if token.startswith("[CHUNKS]") and token.endswith("[/CHUNKS]"):
+                yield token
+            else:
+                full_response.append(token)
+                yield token
+    finally:
+        # Persist whatever was accumulated, even if the client disconnected
+        # mid-stream (generator cancellation). Avoids losing the partial
+        # assistant response and lets the user see it later.
+        complete_content = "".join(full_response)
+        if complete_content:
+            await add_message(chat_id, "assistant", complete_content)

@@ -42,6 +42,8 @@ def get_llm():
             temperature=0.7,
             top_p=0.95,
             convert_system_message_to_human=True,
+            timeout=settings.llm_timeout,
+            max_retries=2,
         )
     return FallbackLLM(
         model=settings.gemini_model,
@@ -60,6 +62,8 @@ def get_decision_llm():
             temperature=settings.rag_decision_temperature,
             top_p=0.95,
             convert_system_message_to_human=True,
+            timeout=settings.llm_timeout,
+            max_retries=2,
         )
     return FallbackLLM(
         model=model,

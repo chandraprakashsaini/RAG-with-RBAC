@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import asyncio
 import re
 from collections.abc import AsyncGenerator
 from uuid import UUID
@@ -21,6 +22,9 @@ from app.db.models import ChatMessage
 from app.llms.provider import get_decision_llm, get_llm
 from app.services.vector_store_service import list_document_names
 
+_NEED_RE = re.compile(r"NEED:\s*(YES|NO)", re.IGNORECASE)
+_DOCS_RE = re.compile(r"DOCS:\s*(.+)", re.IGNORECASE)
+
 
 def _format_history_for_prompt(messages: list) -> str:
     parts = []
@@ -32,47 +36,50 @@ def _format_history_for_prompt(messages: list) -> str:
     return "\n".join(parts)
 
 
-def _retrieve_context(
+async def _retrieve_context(
     query: str,
     top_k: int,
     document_names: list[str] | None = None,
     min_score: float = 0.0,
 ) -> list[dict]:
-    try:
-        collection = get_collection()
-    except Exception:
-        return []
+    def _query() -> list[dict]:
+        try:
+            collection = get_collection()
+        except Exception:
+            return []
 
-    where = None
-    if document_names:
-        where = {"document_name": {"$in": document_names}}
+        where = None
+        if document_names:
+            where = {"document_name": {"$in": document_names}}
 
-    try:
-        result = collection.query(
-            query_texts=[query],
-            n_results=top_k,
-            where=where,
-        )
-    except Exception:
-        return []
+        try:
+            result = collection.query(
+                query_texts=[query],
+                n_results=top_k,
+                where=where,
+            )
+        except Exception:
+            return []
 
-    ids = result.get("ids", [[]])[0]
-    documents = result.get("documents", [[]])[0]
-    distances = result.get("distances", [[]])[0]
-    metadatas = result.get("metadatas", [[]])[0]
+        ids = result.get("ids", [[]])[0]
+        documents = result.get("documents", [[]])[0]
+        distances = result.get("distances", [[]])[0]
+        metadatas = result.get("metadatas", [[]])[0]
 
-    chunks = []
-    for i in range(len(ids)):
-        score = distances[i] if i < len(distances) else None
-        if min_score > 0 and score is not None and score > min_score:
-            continue
-        chunks.append({
-            "id": ids[i],
-            "content": documents[i],
-            "score": score,
-            "metadata": metadatas[i] if i < len(metadatas) else None,
-        })
-    return chunks
+        chunks = []
+        for i in range(len(ids)):
+            score = distances[i] if i < len(distances) else None
+            if min_score > 0 and score is not None and score > min_score:
+                continue
+            chunks.append({
+                "id": ids[i],
+                "content": documents[i],
+                "score": score,
+                "metadata": metadatas[i] if i < len(metadatas) else None,
+            })
+        return chunks
+
+    return await asyncio.to_thread(_query)
 
 
 def _build_context_string(chunks: list[dict]) -> str:
@@ -139,10 +146,10 @@ async def _should_retrieve(
         response = await decision_llm.ainvoke([HumanMessage(content=prompt)])
         content = response.content.strip() if hasattr(response, "content") else str(response)
 
-        needs_match = re.search(r"NEED:\s*(YES|NO)", content, re.IGNORECASE)
+        needs_match = _NEED_RE.search(content)
         needs = bool(needs_match and needs_match.group(1).upper() == "YES")
 
-        docs_match = re.search(r"DOCS:\s*(.+)", content, re.IGNORECASE)
+        docs_match = _DOCS_RE.search(content)
         doc_names: list[str] | None = None
         if docs_match:
             raw = docs_match.group(1).strip()
@@ -184,7 +191,7 @@ async def generate_rag_response(
     history = _build_history_messages(chat_messages)
 
     if not settings.gemini_api_key:
-        chunks = _retrieve_context(user_message, top_k=settings.rag_top_k)
+        chunks = await _retrieve_context(user_message, top_k=settings.rag_top_k)
         chunk_summary = "\n".join(
             f"[{i}] {c['content'][:100]}..." for i, c in enumerate(chunks, 1)
         ) if chunks else "No relevant documents found."
@@ -210,7 +217,7 @@ async def generate_rag_response(
 
     chunks = []
     if needs_retrieval:
-        chunks = _retrieve_context(
+        chunks = await _retrieve_context(
             search_query,
             settings.rag_top_k,
             document_names=doc_filter,
@@ -233,7 +240,7 @@ async def stream_rag_response(
     history = _build_history_messages(chat_messages)
 
     if not settings.gemini_api_key:
-        chunks = _retrieve_context(user_message, top_k=settings.rag_top_k)
+        chunks = await _retrieve_context(user_message, top_k=settings.rag_top_k)
         chunk_summary = "\n".join(
             f"[{i}] {c['content'][:100]}..." for i, c in enumerate(chunks, 1)
         ) if chunks else "No relevant documents found."
@@ -261,7 +268,7 @@ async def stream_rag_response(
 
     chunks = []
     if needs_retrieval:
-        chunks = _retrieve_context(
+        chunks = await _retrieve_context(
             search_query,
             settings.rag_top_k,
             document_names=doc_filter,

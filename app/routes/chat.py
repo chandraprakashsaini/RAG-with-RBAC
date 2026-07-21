@@ -4,7 +4,7 @@ import json
 from typing import List
 from uuid import UUID
 
-from fastapi import APIRouter, Depends, HTTPException, Request, status
+from fastapi import APIRouter, Depends, HTTPException, Query, Request, status
 from fastapi.responses import StreamingResponse
 from pydantic import BaseModel, Field
 
@@ -35,7 +35,7 @@ class ChatResponse(BaseModel):
 
 
 class ChatMessageCreate(BaseModel):
-    content: str = Field(min_length=1)
+    content: str = Field(min_length=1, max_length=10_000)
 
 
 class ChatMessageResponse(BaseModel):
@@ -78,9 +78,11 @@ async def create_chat_endpoint(
 
 @router.get("", response_model=List[ChatResponse])
 async def list_chats_endpoint(
+    limit: int = Query(default=100, ge=1, le=500),
+    offset: int = Query(default=0, ge=0),
     current_user: CurrentUser = Depends(get_current_user),
 ):
-    chats = await list_chats(current_user.user_id)
+    chats = await list_chats(current_user.user_id, limit=limit)
     return [
         ChatResponse(
             id=chat.id,
@@ -105,7 +107,7 @@ async def get_chat_endpoint(
             detail="Chat not found",
         )
 
-    messages = await get_messages(chat_id)
+    messages = await get_messages(chat_id, limit=200)
 
     return ChatWithMessagesResponse(
         chat=ChatResponse(

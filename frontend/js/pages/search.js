@@ -78,16 +78,16 @@ window.SearchPage = {
             ${data.hits.map(h => `
               <div class="card" style="padding:0.75rem">
                 <div style="display:flex;justify-content:space-between;font-size:0.8rem;margin-bottom:0.25rem">
-                  <span>Doc: ${h.document || 'N/A'}</span>
-                  <span style="color:var(--text2)">Score: ${h.score?.toFixed(4) || 'N/A'}</span>
+                  <span>Doc: ${escapeHtml(h.document) || 'N/A'}</span>
+                  <span style="color:var(--text2)">Score: ${h.score != null ? h.score.toFixed(4) : 'N/A'}</span>
                 </div>
-                <div style="font-size:0.85rem;color:var(--text2)">${h.content || '(empty)'}</div>
+                <div style="font-size:0.85rem;color:var(--text2)">${escapeHtml(h.content) || '(empty)'}</div>
               </div>
             `).join('')}
           `;
         }
       } catch (e) {
-        results.innerHTML = `<p style="color:var(--danger);margin-top:0.5rem">${e.message}</p>`;
+        results.innerHTML = `<p style="color:var(--danger);margin-top:0.5rem">${escapeHtml(e.message)}</p>`;
       } finally {
         searchBtn.disabled = false;
       }

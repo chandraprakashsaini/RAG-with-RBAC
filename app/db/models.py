@@ -4,7 +4,7 @@ from datetime import datetime, timezone
 from typing import List, Optional
 from uuid import UUID, uuid4
 
-from sqlalchemy import Boolean, DateTime, ForeignKey, String, Text, Uuid
+from sqlalchemy import Boolean, DateTime, ForeignKey, Index, String, Text, Uuid
 from sqlalchemy.orm import Mapped, mapped_column, relationship
 
 from app.db.connection import Base
@@ -31,6 +31,7 @@ class UserRole(Base):
 
 class User(Base):
     __tablename__ = "users"
+    __table_args__ = (Index("ix_users_role_id", "role_id"),)
 
     id: Mapped[UUID] = mapped_column(
         Uuid, primary_key=True, default=uuid4
@@ -56,6 +57,7 @@ class User(Base):
 
 class Chat(Base):
     __tablename__ = "chats"
+    __table_args__ = (Index("ix_chats_user_id", "user_id"),)
 
     id: Mapped[UUID] = mapped_column(
         Uuid, primary_key=True, default=uuid4
@@ -77,6 +79,10 @@ class Chat(Base):
 
 class ChatMessage(Base):
     __tablename__ = "chat_messages"
+    __table_args__ = (
+        Index("ix_chat_messages_chat_id", "chat_id"),
+        Index("ix_chat_messages_chat_id_created_at", "chat_id", "created_at"),
+    )
 
     id: Mapped[UUID] = mapped_column(
         Uuid, primary_key=True, default=uuid4
@@ -95,6 +101,10 @@ class ChatMessage(Base):
 
 class Document(Base):
     __tablename__ = "documents"
+    __table_args__ = (
+        Index("ix_documents_user_id", "user_id"),
+        Index("ix_documents_document_id", "document_id"),
+    )
 
     id: Mapped[UUID] = mapped_column(
         Uuid, primary_key=True, default=uuid4
@@ -116,4 +126,36 @@ class Document(Base):
     )
 
     user: Mapped["User"] = relationship(back_populates="documents")
+    permissions: Mapped[List["DocumentPermission"]] = relationship(back_populates="document")
+
+
+class DocumentPermission(Base):
+    __tablename__ = "document_permissions"
+    __table_args__ = (
+        Index("ix_document_permissions_document_id", "document_id"),
+        Index("ix_document_permissions_role_id", "role_id"),
+    )
+
+    id: Mapped[UUID] = mapped_column(
+        Uuid, primary_key=True, default=uuid4
+    )
+    document_id: Mapped[UUID] = mapped_column(
+        Uuid, ForeignKey("documents.id", ondelete="CASCADE"), nullable=False
+    )
+    role_id: Mapped[UUID] = mapped_column(
+        Uuid, ForeignKey("user_roles.id", ondelete="CASCADE"), nullable=False
+    )
+    can_read: Mapped[bool] = mapped_column(Boolean, default=True, nullable=False)
+    can_write: Mapped[bool] = mapped_column(Boolean, default=False, nullable=False)
+    can_delete: Mapped[bool] = mapped_column(Boolean, default=False, nullable=False)
+    granted_by: Mapped[UUID] = mapped_column(
+        Uuid, ForeignKey("users.id"), nullable=False
+    )
+    created_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), default=utc_now, nullable=False
+    )
+
+    document: Mapped["Document"] = relationship(back_populates="permissions")
+    role: Mapped["UserRole"] = relationship()
+    grantor: Mapped["User"] = relationship(foreign_keys=[granted_by])
 

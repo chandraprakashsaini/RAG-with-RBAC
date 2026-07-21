@@ -17,13 +17,13 @@ class ChunkingConfig(BaseModel):
 
 class IngestRequest(BaseModel):
     document_id: UUID
-    document_name: str | None = Field(default=None)
-    text: str = Field(min_length=1)
+    document_name: str | None = Field(default=None, max_length=255)
+    text: str = Field(min_length=1, max_length=5_000_000)
     chunking: ChunkingConfig = ChunkingConfig()
 
 
 class ChunkPreviewRequest(BaseModel):
-    text: str = Field(min_length=1)
+    text: str = Field(min_length=1, max_length=5_000_000)
     chunking: ChunkingConfig = ChunkingConfig()
 
 

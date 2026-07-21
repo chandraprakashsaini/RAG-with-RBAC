@@ -14,7 +14,7 @@ window.AdminPage = {
               <thead><tr><th>Name</th><th>Description</th><th>Created</th></tr></thead>
               <tbody>
                 ${roles.map(r => `
-                  <tr><td><span class="badge badge-${r.name}">${r.name}</span></td><td>${r.description || '-'}</td><td>${new Date(r.created_at).toLocaleDateString()}</td></tr>
+                  <tr><td><span class="badge badge-${escapeHtml(r.name)}">${escapeHtml(r.name)}</span></td><td>${escapeHtml(r.description) || '-'}</td><td>${new Date(r.created_at).toLocaleDateString()}</td></tr>
                 `).join('')}
               </tbody>
             </table>
@@ -45,13 +45,13 @@ window.AdminPage = {
           <div class="card-header">
             <div class="card-title">Current User</div>
           </div>
-          <p><strong>Email:</strong> ${me.email}</p>
-          <p><strong>Name:</strong> ${me.full_name}</p>
-          <p><strong>Role:</strong> <span class="badge badge-${me.role || 'viewer'}">${me.role || 'Unknown'}</span></p>
+          <p><strong>Email:</strong> ${escapeHtml(me.email)}</p>
+          <p><strong>Name:</strong> ${escapeHtml(me.full_name)}</p>
+          <p><strong>Role:</strong> <span class="badge badge-${escapeHtml(me.role) || 'viewer'}">${escapeHtml(me.role) || 'Unknown'}</span></p>
         </div>
       `;
     } catch (e) {
-      return `<div class="empty-state"><h3>Error</h3><p>${e.message}</p></div>`;
+      return `<div class="empty-state"><h3>Error</h3><p>${escapeHtml(e.message)}</p></div>`;
     }
   },
 

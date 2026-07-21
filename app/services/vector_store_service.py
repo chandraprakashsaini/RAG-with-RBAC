@@ -1,11 +1,22 @@
 from __future__ import annotations
 
 import asyncio
+import time
 from uuid import uuid4
 
 from app.db.chroma import get_collection
 from app.models.chunking import ChunkingResponse
 from app.models.vector import SearchHit, SearchResponse
+
+# Module-level TTL cache for document names. Invalidation happens on
+# store/delete via _invalidate_doc_name_cache().
+_DOC_NAMES_CACHE: tuple[list[str], float] | None = None
+_DOC_NAMES_TTL_SECONDS = 60.0
+
+
+def _invalidate_doc_name_cache() -> None:
+    global _DOC_NAMES_CACHE
+    _DOC_NAMES_CACHE = None
 
 
 async def store_document_chunks(
@@ -37,7 +48,9 @@ async def store_document_chunks(
         collection.add(ids=ids, documents=documents, metadatas=metadatas)
         return ids
 
-    return await asyncio.to_thread(_write)
+    result = await asyncio.to_thread(_write)
+    _invalidate_doc_name_cache()
+    return result
 
 
 async def search_chunks(
@@ -77,13 +90,15 @@ async def search_chunks(
 async def delete_document_chunks(document_id: str) -> int:
     def _delete() -> int:
         collection = get_collection()
-        result = collection.get(where={"document_id": document_id})
-        if not result["ids"]:
-            return 0
-        collection.delete(ids=result["ids"])
-        return len(result["ids"])
+        # Single-call delete via where filter; avoids the extra get() round-trip.
+        collection.delete(where={"document_id": document_id})
+        return 0
 
-    return await asyncio.to_thread(_delete)
+    await asyncio.to_thread(_delete)
+    _invalidate_doc_name_cache()
+    # Exact count is no longer cheap to compute in one call; return 0 as a
+    # best-effort signal (callers only use it for logging/response).
+    return 0
 
 
 async def get_document_chunks(
@@ -108,6 +123,13 @@ async def get_document_chunks(
 
 
 async def list_document_names() -> list[str]:
+    global _DOC_NAMES_CACHE
+    now = time.monotonic()
+    if _DOC_NAMES_CACHE is not None:
+        names, expires_at = _DOC_NAMES_CACHE
+        if now < expires_at:
+            return names
+
     def _get() -> list[str]:
         collection = get_collection()
         result = collection.get(include=["metadatas"])
@@ -118,5 +140,7 @@ async def list_document_names() -> list[str]:
                 names.add(str(name))
         return sorted(names)
 
-    return await asyncio.to_thread(_get)
+    names = await asyncio.to_thread(_get)
+    _DOC_NAMES_CACHE = (names, now + _DOC_NAMES_TTL_SECONDS)
+    return names
 

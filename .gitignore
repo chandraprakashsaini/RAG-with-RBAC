@@ -8,3 +8,18 @@ wheels/
 
 # Virtual environments
 .venv
+
+# Secrets
+.env
+.env.*
+
+# Database & local state
+*.db
+*.sqlite
+*.sqlite3
+app.db
+alembic_version
+
+# Vector store & uploaded documents
+data/
+documents/

@@ -1,5 +1,16 @@
 const API_BASE = '';
 
+function escapeHtml(s) {
+  if (s === null || s === undefined) return '';
+  return String(s)
+    .replace(/&/g, '&amp;')
+    .replace(/</g, '&lt;')
+    .replace(/>/g, '&gt;')
+    .replace(/"/g, '&quot;')
+    .replace(/'/g, '&#39;');
+}
+window.escapeHtml = escapeHtml;
+
 class ApiClient {
   constructor() {
     this.token = localStorage.getItem('token');
@@ -63,6 +74,31 @@ class ApiClient {
   }
   downloadDocumentUrl(id) { return `${API_BASE}/api/v1/documents/${id}/download`; }
 
+  // Authenticated download: Bearer tokens aren't attached by plain <a> navigation,
+  // so fetch with the Authorization header and return a Blob URL the browser can open.
+  async downloadDocument(id) {
+    const res = await fetch(this.downloadDocumentUrl(id), {
+      headers: this.headers(),
+    });
+    if (!res.ok) {
+      let msg = res.statusText;
+      try { const data = await res.json(); msg = data?.detail || data?.error?.message || msg; } catch {}
+      throw new Error(msg);
+    }
+    const blob = await res.blob();
+    const url = URL.createObjectURL(blob);
+    const match = /filename="([^"]+)"/.exec(res.headers.get('Content-Disposition') || '');
+    return { url, filename: match ? match[1] : id };
+  }
+  getDocumentPermissions(docId) { return this.get(`/api/v1/documents/${docId}/permissions`); }
+  grantDocumentPermission(docId, data) { return this.post(`/api/v1/documents/${docId}/permissions`, data); }
+  updateDocumentPermission(docId, permId, data) {
+    return this.request('PUT', `/api/v1/documents/${docId}/permissions/${permId}`, data);
+  }
+  revokeDocumentPermission(docId, permId) {
+    return this.del(`/api/v1/documents/${docId}/permissions/${permId}`);
+  }
+
   uploadDocument(file, documentName) {
     const formData = new FormData();
     formData.append('file', file);
@@ -90,6 +126,12 @@ class ApiClient {
     if (documentId) body.document_id = documentId;
     return this.post('/api/v1/search', body);
   }
+
+  // Users
+  listUsers() { return this.get('/users'); }
+  getUser(id) { return this.get(`/users/${id}`); }
+  updateUser(id, data) { return this.request('PATCH', `/users/${id}`, data); }
+  deleteUser(id) { return this.del(`/users/${id}`); }
 
   // Chats
   createChat(title) { return this.post('/api/v1/chats', { title }); }

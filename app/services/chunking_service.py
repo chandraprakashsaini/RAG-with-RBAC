@@ -1,3 +1,5 @@
+import asyncio
+
 from fastapi import HTTPException
 
 from app.models.chunking import ChunkInfo, ChunkingConfig, ChunkingResponse
@@ -12,7 +14,8 @@ async def build_chunks_payload(text: str, config: ChunkingConfig) -> ChunkingRes
         )
 
     try:
-        chunks = chunk_text(
+        chunks = await asyncio.to_thread(
+            chunk_text,
             text=text,
             strategy=config.strategy,
             chunk_size=config.chunk_size,

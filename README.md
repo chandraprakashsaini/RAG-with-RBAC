@@ -27,7 +27,7 @@ app/
 ├── db/                 # Database models, connections
 │   ├── models.py       # SQLAlchemy ORM (User, Role, Chat, ChatMessage)
 │   ├── connection.py   # Async SQLAlchemy engine + session factory
-│   └── chroma.py       # ChromaDB client singleton (Python 3.8 compat)
+│   └── chroma.py       # ChromaDB client singleton (telemetry disabled)
 ├── llms/               # LLM provider
 │   └── provider.py     # LangChain GoogleGenerativeAI (optional dep)
 ├── models/             # Pydantic request/response schemas
@@ -63,21 +63,31 @@ frontend/               # SPA admin dashboard
 
 ### Prerequisites
 
-- Python 3.12+ (runs on 3.8 with some limitations)
-- pip or uv
+- **Python 3.12+** (required — the codebase uses PEP 604 union syntax like `str | None` and other 3.10+ features; `pyproject.toml` enforces `requires-python = ">=3.12"`)
+- pip or [uv](https://docs.astral.sh/uv/)
+
+> **Common pitfall:** if `uvicorn main:app` fails with `TypeError: unsupported operand type(s) for |: 'type' and 'NoneType'`, you are running the system Python (e.g. 3.8) instead of the project venv. Activate the venv first (see below) or run `.venv/bin/uvicorn main:app --reload` directly.
 
 ### Installation
 
 ```bash
 git clone <repo-url> && cd project-1
 
-python -m venv .venv && source .venv/bin/activate
+# Create a venv using Python 3.12+ (use an explicit path if `python` is 3.8)
+python3.12 -m venv .venv && source .venv/bin/activate
 
 # Core dependencies
 pip install -e .
 
 # Dev dependencies (for testing)
 pip install -e ".[dev]"
+```
+
+If you have `uv` installed, you can sync directly from the lockfile (it will create/use `.venv` with the correct Python):
+
+```bash
+uv sync
+source .venv/bin/activate
 ```
 
 ### Configuration
@@ -90,7 +100,7 @@ DATABASE_URL=sqlite+aiosqlite:///./app.db
 CHROMA_DIR=./data/chroma
 CHROMA_COLLECTION=documents
 EMBEDDING_MODEL=all-MiniLM-L6-v2
-JWT_SECRET=change-me-in-production
+JWT_SECRET=<generate-a-secure-random-secret-at-least-32-chars>
 JWT_ALGORITHM=HS256
 JWT_EXPIRE_MINUTES=60
 GEMINI_API_KEY=your-google-ai-key
@@ -98,11 +108,22 @@ GEMINI_MODEL=gemini-2.0-flash
 RAG_TOP_K=5
 LOG_LEVEL=INFO
 LOG_FORMAT=json
+
+# Security / operational settings
+SEED_DEMO_DATA=false
+CORS_ORIGINS=["http://localhost:8000"]
+MAX_UPLOAD_BYTES=25000000
+LLM_TIMEOUT=60
+LOGIN_RATE_LIMIT=5/minute
 ```
+
+> **Security:** `JWT_SECRET` is validated at startup — the default value is rejected. Generate a strong secret (e.g. `python -c "import secrets; print(secrets.token_urlsafe(48))"`). `SEED_DEMO_DATA=true` creates demo users (with the password `password123`); only enable this for local development.
+
+> **CORS in dev mode:** when `DEBUG=true`, CORS allows any `http://localhost:*` or `http://127.0.0.1:*` origin so you can run a separate frontend dev server (e.g. Vite on port 5173, Create React App on port 3000). In production (`DEBUG=false`), only the origins listed in `CORS_ORIGINS` are allowed.
 
 ### Database
 
-Tables are auto-created on first startup. Seed users are inserted automatically:
+Tables are auto-created on first startup. When `SEED_DEMO_DATA=true`, demo users are inserted automatically (intended for local development only):
 
 | Email               | Password     | Role     |
 |---------------------|-------------|----------|
@@ -114,8 +135,14 @@ Tables are auto-created on first startup. Seed users are inserted automatically:
 
 ### Run
 
+> **Important:** always activate the venv (`source .venv/bin/activate`) before running, so you use the project's Python 3.12 and installed dependencies. Running `uvicorn` against the system Python will fail with `TypeError: unsupported operand type(s) for |`.
+
 ```bash
+# After activating the venv:
 uvicorn main:app --reload
+
+# Or, without activating, invoke the venv binary directly:
+.venv/bin/uvicorn main:app --reload
 ```
 
 Open `http://localhost:8000` for the admin dashboard.
@@ -131,8 +158,8 @@ All endpoints except `/health` and `/auth/login` require a Bearer JWT token.
 
 ```
 {
-  "email": "alice@example.com",
-  "password": "password123"
+  "email": "your-email@example.com",
+  "password": "your-password"
 }
 ```
 
@@ -258,17 +285,25 @@ User message → save to DB → get chat history → retrieve top-k chunks from 
 
 Without `GEMINI_API_KEY`, the system returns a mock response showing what was retrieved.
 
-## Python 3.8 Compatibility
+## Python Version Requirement
 
-The project targets Python 3.12+ but runs on 3.8 with these limitations:
+This project requires **Python 3.12+**. The codebase relies on modern syntax and features that are not available in 3.8/3.9/3.10/3.11:
 
-| Limitation | Workaround |
-|-----------|------------|
-| `langchain-google-genai` unavailable | Falls back to `FallbackLLM` mock |
-| `sentence-transformers` unavailable | ChromaDB queries return empty results |
-| ChromaDB `posthog` telemetry uses `dict[str, X]` | Fake `posthog` module + telemetry disabled |
+- PEP 604 union types (`str | None`, `list[str] | None`) — requires 3.10+
+- `match`/`case` statements where used — requires 3.10+
+- Pydantic v2 / SQLAlchemy 2.0 async patterns tuned for 3.12
 
-Upgrade to Python 3.9+ and run `pip install langchain-google-genai sentence-transformers` for full functionality.
+`pyproject.toml` enforces this via `requires-python = ">=3.12"`, and `uv.lock` pins 3.12-compatible wheels.
+
+### Optional LLM / embedding dependencies
+
+For full RAG functionality (Gemini + sentence-transformers embeddings), ensure the following are installed (they are already in `pyproject.toml` dependencies):
+
+```bash
+pip install langchain-google-genai sentence-transformers
+```
+
+Without `GEMINI_API_KEY` set, the system falls back to a `FallbackLLM` mock so the API still responds.
 
 ## Development
 
